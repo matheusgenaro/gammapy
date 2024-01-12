@@ -1,10 +1,12 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 import logging
 import matplotlib.pyplot as plt
+import decimal
 from matplotlib.gridspec import GridSpec
 from gammapy.utils.scripts import make_path
 from .map import MapDataset, MapDatasetOnOff
 from .utils import get_axes
+
 
 __all__ = ["SpectrumDatasetOnOff", "SpectrumDataset"]
 
@@ -421,3 +423,121 @@ class SpectrumDatasetOnOff(PlotMixin, MapDatasetOnOff):
             SpectrumDataset with Cash statistic.
         """
         return self.to_map_dataset(name=name).to_spectrum_dataset(on_region=None)
+
+class SpectrumDatasetOnOffBASiL(SpectrumDatasetOnOff):
+    def stat_array(self):
+        """
+        Likelihood per bin in BASiL approach given the current model parameters
+        """
+        print("It is using BASiL.")
+        mu_sig = self.npred_signal().data
+        on_stat_ = basil_like_general(
+            n_on=self.counts.data,
+            n_off=self.counts_off.data,
+            alpha=list(self.alpha.data),
+            var_Non=self.var_Non,
+            mu_sig=mu_sig,
+            variable=self.variable,
+            bin_dist=self.bin_dist,
+            folder=self.folder
+        )
+        return np.nan_to_num(on_stat_)
+
+
+def basil_like_general(n_on, n_off, alpha, var_Non, mu_sig, variable, bin_dist, folder):
+    '''
+       Compute the log of the marginal likelihood (posterior of mu_sig)
+    '''
+    res = np.zeros(n_on.shape)
+    # Loop in energy bins
+    for i in range(len(n_on)):
+        # Compute mu_sig independent factor
+        factor = compute_factor_v2(int(n_on[i][0][0]), int(n_off[i][0][0]), alpha[i][0][0])
+
+        like_sig = np.ones(int(n_on[i][0][0]))
+        like_bkg = np.ones(int(n_on[i][0][0]))
+        for j in range(len(variable)):
+            # Select the distribution of the appropriate energy range
+            gamma_dist = np.loadtxt(
+                './distributions/' + variable[j] + '/z45/' + folder + '/gamma_en_' + str(i) + '.dat')
+            proton_dist = np.loadtxt(
+                './distributions/' + variable[j] + '/z45/' + folder + '/bkgOff_en_' + str(i) + '.dat')
+
+            density_sig, points_sig = np.histogram(gamma_dist, bins=bin_dist[j, 0], density=True)
+            density_bkg, points_bkg = np.histogram(proton_dist, bins=bin_dist[j, 1], density=True)
+
+            # Compute combinatory factor
+            like_sig_, like_bkg_ = compute_like_events(int(n_on[i][0][0]), var_Non[j][i], points_sig, density_sig,
+                                                       points_bkg, density_bkg)
+            like_sig = like_sig * like_sig_
+            like_bkg = like_bkg * like_bkg_
+
+        comb = combinatory_term(like_bkg, like_sig)
+
+        soma = Decimal(0)
+        # Loop in n_s (0 to n_on)
+        if mu_sig[i][0][0] > 0:  # avoid 0**0 case
+            for j in range(int(n_on[i][0][0]) + 1):
+                soma += factor[j] * Decimal(comb[j]) * Decimal(mu_sig[i][0][0]) ** Decimal(j)
+            # log natural base
+            soma = float(soma.log10()) / np.log10(np.exp(1))
+            res[i][0][0] = soma - mu_sig[i][0][0]
+    return -2 * res
+
+def compute_like_events(Non, var_Non, points_sig, density_sig, points_bkg, density_bkg):
+    '''
+       Attribute probabilities for observed single-event variable.
+    '''
+    like_bkg = np.array([])
+    like_sig = np.array([])
+    for j in range(Non):
+        # Find where in the histogram is the var_Non[j] value is and find the density value
+        if np.argwhere(points_sig < var_Non[j]).size > 1:
+            indx_sig = np.argwhere(points_sig < var_Non[j])[-1][0]
+            if (indx_sig == len(density_sig)): #border case
+                indx_sig -= 1
+        else:
+            indx_sig = 0
+        if np.argwhere(points_bkg < var_Non[j]).size > 1:
+            indx_bkg = np.argwhere(points_bkg < var_Non[j])[-1][0]
+            if (indx_bkg == len(density_bkg)):
+                indx_bkg -= 1
+        else:
+            indx_bkg = 0
+        like_sig = np.append(like_sig, density_sig[indx_sig])
+        like_bkg = np.append(like_bkg, density_bkg[indx_bkg])
+    return like_sig, like_bkg
+
+def compute_factor_v2(n_on, n_off, alpha):
+    '''
+       Auxiliary function to compute likelihood factor that is independent of mu_sig.
+    '''
+    factor_bin = np.array([])
+    for j in range(int(n_on) + 1):
+        factor_bin = np.append(factor_bin, Decimal(
+            factorial(int(n_on) + int(n_off) - j) // factorial(int(n_off)) / Decimal((1 + 1 / alpha)) ** Decimal(-j)))
+
+    return factor_bin
+
+def factorial(n):
+    '''
+       Compute the factorial of an integer
+    '''
+    if n == 0 or n==1:
+        return 1
+    fac = 2
+    m = fac
+    while m < n:
+        fac = fac*(m+1)
+        m += 1
+    return fac
+
+def combinatory_term(like_bkg, like_sig):
+    n = len(like_bkg)
+    comb = np.append(1, np.zeros(n)).tolist()
+    for i in range(n):
+        D = np.append(0,comb[:-1])
+        for j in range(len(comb)):
+            res = Decimal(like_bkg[i])*Decimal(comb[j]) + Decimal(like_sig[i])*Decimal(D[j])
+            comb[j] = Decimal(res)
+    return comb
