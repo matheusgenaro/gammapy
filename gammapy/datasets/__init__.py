@@ -5,7 +5,7 @@ from .flux_points import FluxPointsDataset
 from .io import OGIPDatasetReader, OGIPDatasetWriter
 from .map import MapDataset, MapDatasetOnOff, create_map_dataset_geoms
 from .simulate import MapDatasetEventSampler, ObservationEventSampler
-from .spectrum import SpectrumDataset, SpectrumDatasetOnOff
+from .spectrum import SpectrumDataset, SpectrumDatasetOnOff, SpectrumDatasetOnOffBASiL
 
 DATASET_REGISTRY = Registry(
     [
