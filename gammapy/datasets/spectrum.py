@@ -2,6 +2,7 @@
 import logging
 import matplotlib.pyplot as plt
 import decimal
+import numpy as np
 from matplotlib.gridspec import GridSpec
 from gammapy.utils.scripts import make_path
 from .map import MapDataset, MapDatasetOnOff
@@ -425,6 +426,38 @@ class SpectrumDatasetOnOff(PlotMixin, MapDatasetOnOff):
         return self.to_map_dataset(name=name).to_spectrum_dataset(on_region=None)
 
 class SpectrumDatasetOnOffBASiL(SpectrumDatasetOnOff):
+    def __init__(
+            self,
+            models=None,
+            counts=None,
+            counts_off=None,
+            acceptance=None,
+            acceptance_off=None,
+            exposure=None,
+            mask_fit=None,
+            psf=None,
+            edisp=None,
+            name=None,
+            mask_safe=None,
+            gti=None,
+            meta_table=None,
+    ):
+        self._name = make_name(name)
+        self._evaluators = {}
+
+        self.counts = counts
+        self.counts_off = counts_off
+        self.exposure = exposure
+        self.acceptance = acceptance
+        self.acceptance_off = acceptance_off
+        self.gti = gti
+        self.mask_fit = mask_fit
+        self.psf = psf
+        self.edisp = edisp
+        self.models = models
+        self.mask_safe = mask_safe
+        self.meta_table = meta_table
+
     def stat_array(self):
         """
         Likelihood per bin in BASiL approach given the current model parameters
