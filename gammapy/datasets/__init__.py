@@ -13,6 +13,7 @@ DATASET_REGISTRY = Registry(
         MapDatasetOnOff,
         SpectrumDataset,
         SpectrumDatasetOnOff,
+        SpectrumDatasetOnOffBASiL,
         FluxPointsDataset,
     ]
 )
@@ -33,4 +34,5 @@ __all__ = [
     "OGIPDatasetReader",
     "SpectrumDataset",
     "SpectrumDatasetOnOff",
+    "SpectrumDatasetOnOffBASiL",
 ]
