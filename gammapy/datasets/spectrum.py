@@ -472,11 +472,11 @@ class SpectrumDatasetOnOffBASiL(SpectrumDatasetOnOff):
         """
         print("It is using BASiL.")
         mu_sig = self.npred_signal().data
-        on_stat_ = basil_like_general(
+        on_stat_ = basil_like_general_v2(
             n_on=self.counts.data,
             n_off=self.counts_off.data,
             alpha=list(self.alpha.data),
-            var_Non=self.var_Non,
+            var_Non=self.var_Non.data,
             mu_sig=mu_sig,
             variable=self.variable,
             bin_dist=self.bin_dist,
@@ -526,7 +526,7 @@ class SpectrumDatasetOnOffBASiL(SpectrumDatasetOnOff):
 
         if self.counts is not None:
             kwargs["counts"] = self.counts.slice_by_idx(slices=slices)
-        print(kwargs["counts"])
+
         if self.counts_off is not None:
             kwargs["counts_off"] = self.counts_off.slice_by_idx(slices=slices)
 
@@ -568,7 +568,47 @@ class SpectrumDatasetOnOffBASiL(SpectrumDatasetOnOff):
 
         return self.__class__(**kwargs)
 
+def basil_like_general_v2(n_on, n_off, alpha, var_Non, mu_sig, variable, bin_dist, folder):
+    '''
+       Compute the log of the marginal likelihood (posterior of mu_sig)
+       Not yet fully implemented for multiple event variables.
+    '''
+    res = np.zeros(n_on.shape)
 
+    # Loop in energy bins
+    for i in range(len(n_on)):
+        # Compute mu_sig independent factor
+        factor = compute_factor_v2(int(n_on[i][0][0]), int(n_off[i][0][0]), alpha[i][0][0])
+
+        like_sig = np.ones(int(n_on[i][0][0]))
+        like_bkg = np.ones(int(n_on[i][0][0]))
+        for j in range(len(variable)):
+            # Select the distribution of the appropriate energy range
+            gamma_dist = np.loadtxt(
+                '/home/matheus/Documents/gammapy/distributions/' + variable[j] + '/z45/' + folder + '/gamma_en_' + str(i) + '.dat')
+            proton_dist = np.loadtxt(
+                '/home/matheus/Documents/gammapy/distributions/' + variable[j] + '/z45/' + folder + '/bkgOff_en_' + str(i) + '.dat')
+
+            density_sig, points_sig = np.histogram(gamma_dist, bins=bin_dist[j, 0], density=True)
+            density_bkg, points_bkg = np.histogram(proton_dist, bins=bin_dist[j, 1], density=True)
+
+            # Compute combinatory factor
+            like_sig_, like_bkg_ = compute_like_events(int(n_on[i][0][0]), np.transpose(var_Non[i])[0][0], points_sig, density_sig,
+                                                       points_bkg, density_bkg)
+            like_sig = like_sig * like_sig_
+            like_bkg = like_bkg * like_bkg_
+
+        comb = combinatory_term(like_bkg, like_sig)
+
+        soma = Decimal(0)
+        # Loop in n_s (0 to n_on)
+        if mu_sig[i][0][0] > 0:  # avoid 0**0 case
+            for j in range(int(n_on[i][0][0]) + 1):
+                soma += factor[j] * Decimal(comb[j]) * Decimal(mu_sig[i][0][0]) ** Decimal(j)
+            # log natural base
+            soma = float(soma.log10()) / np.log10(np.exp(1))
+            res[i][0][0] = soma - mu_sig[i][0][0]
+    return -2 * res
 
 def basil_like_general(n_on, n_off, alpha, var_Non, mu_sig, variable, bin_dist, folder):
     '''
