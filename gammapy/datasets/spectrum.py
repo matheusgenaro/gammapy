@@ -1,15 +1,15 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 import logging
 import matplotlib.pyplot as plt
-import decimal
+from decimal import *
 import numpy as np
 from matplotlib.gridspec import GridSpec
 from gammapy.utils.scripts import make_path
 from .map import MapDataset, MapDatasetOnOff
 from .utils import get_axes
+from gammapy.utils.scripts import make_name
 
-
-__all__ = ["SpectrumDatasetOnOff", "SpectrumDataset"]
+__all__ = ["SpectrumDatasetOnOff", "SpectrumDataset", "SpectrumDatasetOnOffBASiL"]
 
 log = logging.getLogger(__name__)
 
@@ -441,6 +441,10 @@ class SpectrumDatasetOnOffBASiL(SpectrumDatasetOnOff):
             mask_safe=None,
             gti=None,
             meta_table=None,
+            variable=None,
+            var_Non=None,
+            bin_dist=None,
+            folder=None,
     ):
         self._name = make_name(name)
         self._evaluators = {}
@@ -457,6 +461,10 @@ class SpectrumDatasetOnOffBASiL(SpectrumDatasetOnOff):
         self.models = models
         self.mask_safe = mask_safe
         self.meta_table = meta_table
+        self.variable = variable
+        self.var_Non = var_Non
+        self.bin_dist = bin_dist
+        self.folder = folder
 
     def stat_array(self):
         """
@@ -476,12 +484,98 @@ class SpectrumDatasetOnOffBASiL(SpectrumDatasetOnOff):
         )
         return np.nan_to_num(on_stat_)
 
+    def slice_by_idx(self, slices, name=None):
+        """Slice sub dataset. Modification from the corresponding one in MapDatasetOnOff
+
+        The slicing only applies to the maps that define the corresponding axes.
+
+        Parameters
+        ----------
+        slices : dict
+            Dictionary of axes names and integers or `slice` object pairs. Contains one
+            element for each non-spatial dimension. For integer indexing the
+            corresponding axes is dropped from the map. Axes not specified in the
+            dict are kept unchanged.
+        name : str, optional
+            Name of the sliced dataset. Default is None.
+
+        Returns
+        -------
+        dataset : `MapDataset` or `SpectrumDataset`
+            Sliced dataset.
+
+        Examples
+        --------
+        >>> from gammapy.datasets import MapDataset
+        >>> dataset = MapDataset.read("$GAMMAPY_DATA/cta-1dc-gc/cta-1dc-gc.fits.gz")
+        >>> slices = {"energy": slice(0, 3)} #to get the first 3 energy slices
+        >>> sliced = dataset.slice_by_idx(slices)
+        >>> print(sliced.geoms["geom"])
+        WcsGeom
+                axes       : ['lon', 'lat', 'energy']
+                shape      : (320, 240, 3)
+                ndim       : 3
+                frame      : galactic
+                projection : CAR
+                center     : 0.0 deg, 0.0 deg
+                width      : 8.0 deg x 6.0 deg
+                wcs ref    : 0.0 deg, 0.0 deg
+        """
+        name = make_name(name)
+        kwargs = {"gti": self.gti, "name": name, "meta_table": self.meta_table}
+
+        if self.counts is not None:
+            kwargs["counts"] = self.counts.slice_by_idx(slices=slices)
+        print(kwargs["counts"])
+        if self.counts_off is not None:
+            kwargs["counts_off"] = self.counts_off.slice_by_idx(slices=slices)
+
+        if self.acceptance is not None:
+            kwargs["acceptance"] = self.acceptance.slice_by_idx(slices=slices)
+
+        if self.acceptance_off is not None:
+            kwargs["acceptance_off"] = self.acceptance.slice_by_idx(slices=slices)
+
+        if self.exposure is not None:
+            kwargs["exposure"] = self.exposure.slice_by_idx(slices=slices)
+
+        if self.background is not None and self.stat_type == "cash":
+            kwargs["background"] = self.background.slice_by_idx(slices=slices)
+
+        if self.edisp is not None:
+            kwargs["edisp"] = self.edisp.slice_by_idx(slices=slices)
+
+        if self.psf is not None:
+            kwargs["psf"] = self.psf.slice_by_idx(slices=slices)
+
+        if self.mask_safe is not None:
+            kwargs["mask_safe"] = self.mask_safe.slice_by_idx(slices=slices)
+
+        if self.mask_fit is not None:
+            kwargs["mask_fit"] = self.mask_fit.slice_by_idx(slices=slices)
+
+        if self.variable is not None:
+            kwargs["variable"] = self.variable
+
+        if self.var_Non is not None:
+            kwargs["var_Non"] = self.var_Non
+
+        if self.bin_dist is not None:
+            kwargs["bin_dist"] = self.bin_dist
+
+        if self.folder is not None:
+            kwargs["folder"] = self.folder
+
+        return self.__class__(**kwargs)
+
+
 
 def basil_like_general(n_on, n_off, alpha, var_Non, mu_sig, variable, bin_dist, folder):
     '''
        Compute the log of the marginal likelihood (posterior of mu_sig)
     '''
     res = np.zeros(n_on.shape)
+
     # Loop in energy bins
     for i in range(len(n_on)):
         # Compute mu_sig independent factor
@@ -492,9 +586,9 @@ def basil_like_general(n_on, n_off, alpha, var_Non, mu_sig, variable, bin_dist, 
         for j in range(len(variable)):
             # Select the distribution of the appropriate energy range
             gamma_dist = np.loadtxt(
-                './distributions/' + variable[j] + '/z45/' + folder + '/gamma_en_' + str(i) + '.dat')
+                '/home/matheus/Documents/gammapy/distributions/' + variable[j] + '/z45/' + folder + '/gamma_en_' + str(i) + '.dat')
             proton_dist = np.loadtxt(
-                './distributions/' + variable[j] + '/z45/' + folder + '/bkgOff_en_' + str(i) + '.dat')
+                '/home/matheus/Documents/gammapy/distributions/' + variable[j] + '/z45/' + folder + '/bkgOff_en_' + str(i) + '.dat')
 
             density_sig, points_sig = np.histogram(gamma_dist, bins=bin_dist[j, 0], density=True)
             density_bkg, points_bkg = np.histogram(proton_dist, bins=bin_dist[j, 1], density=True)
@@ -523,6 +617,7 @@ def compute_like_events(Non, var_Non, points_sig, density_sig, points_bkg, densi
     '''
     like_bkg = np.array([])
     like_sig = np.array([])
+
     for j in range(Non):
         # Find where in the histogram is the var_Non[j] value is and find the density value
         if np.argwhere(points_sig < var_Non[j]).size > 1:
