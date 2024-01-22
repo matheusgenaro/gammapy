@@ -2,6 +2,7 @@
 import logging
 import matplotlib.pyplot as plt
 from decimal import *
+import pickle
 import numpy as np
 from matplotlib.gridspec import GridSpec
 from gammapy.utils.scripts import make_path
@@ -472,7 +473,7 @@ class SpectrumDatasetOnOffBASiL(SpectrumDatasetOnOff):
         """
         print("It is using BASiL.")
         mu_sig = self.npred_signal().data
-        on_stat_ = basil_like_general_v2(
+        on_stat_ = basil_like_general_v3(
             n_on=self.counts.data,
             n_off=self.counts_off.data,
             alpha=list(self.alpha.data),
@@ -568,6 +569,35 @@ class SpectrumDatasetOnOffBASiL(SpectrumDatasetOnOff):
 
         return self.__class__(**kwargs)
 
+def basil_like_general_v3(n_on, n_off, alpha, var_Non, mu_sig, variable, bin_dist, folder):
+    '''
+       Compute the log of the marginal likelihood (posterior of mu_sig)
+       Not yet fully implemented for multiple event variables.
+    '''
+
+    res = np.zeros(n_on.shape)
+
+    # Loop in energy bins
+    for i in range(len(n_on)):
+        with open('/home/matheus/Documents/gammapy-dev/gammapy/aux_files/prod_bin'+str(i)+'.pkl', 'rb') as file:
+            prod = pickle.load(file)
+        with open('/home/matheus/Documents/gammapy-dev/gammapy/aux_files/comb_bin'+str(i)+'.pkl', 'rb') as file:
+            comb = pickle.load(file)
+        soma = Decimal(0)
+        # Loop in n_s (0 to n_on)
+        if mu_sig[i][0][0] > 0:  # avoid 0**0 case
+            for j in range(int(n_on[i][0][0]) + 1):
+                soma += prod[j] * Decimal(mu_sig[i][0][0]) ** Decimal(j)
+            # log natural base
+            soma = float(soma.log10()) / np.log10(np.exp(1))
+            res[i][0][0] = soma - mu_sig[i][0][0]
+        elif mu_sig[i][0][0] == 0:
+            res[i][0][0] = float((Decimal(factorial(int(n_on[i][0][0]) + int(n_off[i][0][0]))//factorial(int(n_off[i][0][0])))*Decimal(comb[0])).log10()) / np.log10(np.exp(1))
+        else:
+            res[i][0][0] = -np.inf
+    return -2 * res
+
+
 def basil_like_general_v2(n_on, n_off, alpha, var_Non, mu_sig, variable, bin_dist, folder):
     '''
        Compute the log of the marginal likelihood (posterior of mu_sig)
@@ -577,6 +607,12 @@ def basil_like_general_v2(n_on, n_off, alpha, var_Non, mu_sig, variable, bin_dis
 
     # Loop in energy bins
     for i in range(len(n_on)):
+        #if int(n_on[i][0][0]) == 0 and int(n_off[i][0][0]) == 0:
+        #    if mu_sig[i][0][0] >= 0:
+        #        res[i][0][0] = 2*mu_sig[i][0][0]
+        #    else:
+        #        res[i][0][0] = np.inf
+        #else:
         # Compute mu_sig independent factor
         factor = compute_factor_v2(int(n_on[i][0][0]), int(n_off[i][0][0]), alpha[i][0][0])
 
@@ -608,6 +644,10 @@ def basil_like_general_v2(n_on, n_off, alpha, var_Non, mu_sig, variable, bin_dis
             # log natural base
             soma = float(soma.log10()) / np.log10(np.exp(1))
             res[i][0][0] = soma - mu_sig[i][0][0]
+        elif mu_sig[i][0][0] == 0:
+            res[i][0][0] = float((Decimal(factorial(int(n_on[i][0][0]) + int(n_off[i][0][0]))//factorial(int(n_off[i][0][0])))*Decimal(comb[0])).log10()) / np.log10(np.exp(1))
+        else:
+            res[i][0][0] = -np.inf # this broke the estimation
     return -2 * res
 
 def basil_like_general(n_on, n_off, alpha, var_Non, mu_sig, variable, bin_dist, folder):
