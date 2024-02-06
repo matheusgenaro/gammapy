@@ -3,7 +3,7 @@ from gammapy.utils.registry import Registry
 from .core import Dataset, Datasets
 from .flux_points import FluxPointsDataset
 from .io import OGIPDatasetReader, OGIPDatasetWriter
-from .map import MapDataset, MapDatasetOnOff, create_map_dataset_geoms
+from .map import MapDataset, MapDatasetOnOff, MapDatasetBASiL, create_map_dataset_geoms
 from .simulate import MapDatasetEventSampler, ObservationEventSampler
 from .spectrum import SpectrumDataset, SpectrumDatasetOnOff, SpectrumDatasetOnOffBASiL
 
@@ -11,6 +11,7 @@ DATASET_REGISTRY = Registry(
     [
         MapDataset,
         MapDatasetOnOff,
+        MapDatasetBASiL,
         SpectrumDataset,
         SpectrumDatasetOnOff,
         SpectrumDatasetOnOffBASiL,
@@ -29,6 +30,7 @@ __all__ = [
     "MapDataset",
     "MapDatasetEventSampler",
     "MapDatasetOnOff",
+    "MapDatasetBASiL",
     "ObservationEventSampler",
     "OGIPDatasetWriter",
     "OGIPDatasetReader",

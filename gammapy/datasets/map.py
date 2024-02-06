@@ -17,6 +17,7 @@ from gammapy.stats import (
     cash_sum_cython,
     get_wstat_mu_bkg,
     wstat,
+    BASiL_3D,
 )
 from gammapy.utils.fits import HDULocation, LazyFitsData
 from gammapy.utils.random import get_random_state
@@ -30,6 +31,7 @@ __all__ = [
     "MapDataset",
     "MapDatasetOnOff",
     "create_map_dataset_geoms",
+    "MapDatasetBASiL",
 ]
 
 log = logging.getLogger(__name__)
@@ -107,7 +109,6 @@ def create_map_dataset_geoms(
         "geom_psf": geom_psf,
         "geom_edisp": geom_edisp,
     }
-
 
 class MapDataset(Dataset):
     """Main map dataset for likelihood fitting.
@@ -2864,3 +2865,75 @@ class MapDatasetOnOff(MapDataset):
             counts_off=counts_off,
             name=name,
         )
+
+class MapDatasetBASiL(MapDataset):
+    """
+    MapDataset class with BASiL statistics adapted for 3D analysis.
+    """
+    def __init__(
+        self,
+        models=None,
+        counts=None,
+        exposure=None,
+        background=None,
+        psf=None,
+        edisp=None,
+        mask_safe=None,
+        mask_fit=None,
+        gti=None,
+        meta_table=None,
+        name=None,
+    ):
+        self._name = make_name(name)
+        self._evaluators = {}
+
+        self.counts = counts
+        self.exposure = exposure
+        self.background = background
+        self._background_cached = None
+        self._background_parameters_cached = None
+
+        self.mask_fit = mask_fit
+
+        if psf and not isinstance(psf, (PSFMap, HDULocation)):
+            raise ValueError(
+                f"'psf' must be a 'PSFMap' or `HDULocation` object, got {type(psf)}"
+            )
+
+        self.psf = psf
+
+        if edisp and not isinstance(edisp, (EDispMap, EDispKernelMap, HDULocation)):
+            raise ValueError(
+                "'edisp' must be a 'EDispMap', `EDispKernelMap` or 'HDULocation' "
+                f"object, got `{type(edisp)}` instead."
+            )
+
+        self.edisp = edisp
+        self.mask_safe = mask_safe
+        self.gti = gti
+        self.models = models
+        self.meta_table = meta_table
+
+
+    def stat_array(self):
+        """Statistic function value per bin given the current model parameters."""
+        return BASiL_3D(n_on=self.counts.data, mu_s=self.npred_signal().data, mu_b=self.npred_background().data, comb=self.comb)
+
+    def stat_sum(self):
+        return np.sum(BASiL_3D(n_on=self.counts.data, mu_s=self.npred_signal().data, mu_b=self.npred_background().data,
+                 comb=self.comb))
+    #def stat_sum(self):
+    #    """Total statistic function value given the current model parameters and priors."""
+    #    prior_stat_sum = 0.0
+    #    if self.models is not None:
+    #        prior_stat_sum = self.models.parameters.prior_stat_sum()
+
+    #    counts, npred = self.counts.data.astype(float), self.npred().data
+
+    #    if self.mask is not None:
+    #        return (
+    #            basil_sum_cython(counts[self.mask.data], npred[self.mask.data])
+    #            + prior_stat_sum
+    #        )
+    #    else:
+    #        return basil_sum_cython(counts.ravel(), npred.ravel()) + prior_stat_sum

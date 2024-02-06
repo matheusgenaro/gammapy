@@ -427,6 +427,9 @@ class SpectrumDatasetOnOff(PlotMixin, MapDatasetOnOff):
         return self.to_map_dataset(name=name).to_spectrum_dataset(on_region=None)
 
 class SpectrumDatasetOnOffBASiL(SpectrumDatasetOnOff):
+    """New dataset type that includes the Bayesian approach for
+    computing the posterior of the signal in On/Off analysis.
+    """
     def __init__(
             self,
             models=None,
@@ -481,7 +484,8 @@ class SpectrumDatasetOnOffBASiL(SpectrumDatasetOnOff):
             mu_sig=mu_sig,
             variable=self.variable,
             bin_dist=self.bin_dist,
-            folder=self.folder
+            folder=self.folder,
+            energy=self.counts.geom.axes["energy"].center.value,
         )
         return np.nan_to_num(on_stat_)
 
@@ -569,7 +573,7 @@ class SpectrumDatasetOnOffBASiL(SpectrumDatasetOnOff):
 
         return self.__class__(**kwargs)
 
-def basil_like_general_v3(n_on, n_off, alpha, var_Non, mu_sig, variable, bin_dist, folder):
+def basil_like_general_v3(n_on, n_off, alpha, var_Non, mu_sig, variable, bin_dist, folder, energy):
     '''
        Compute the log of the marginal likelihood (posterior of mu_sig)
        Not yet fully implemented for multiple event variables.
@@ -579,10 +583,10 @@ def basil_like_general_v3(n_on, n_off, alpha, var_Non, mu_sig, variable, bin_dis
 
     # Loop in energy bins
     for i in range(len(n_on)):
-        with open('/home/matheus/Documents/gammapy-dev/gammapy/aux_files/prod_bin'+str(i)+'.pkl', 'rb') as file:
+        with open('/home/matheus/Documents/gammapy-dev/gammapy/aux_files/MC/dataset3/3_bkg-norm1/prod_bin'+str(energy[i])+'.pkl', 'rb') as file:
             prod = pickle.load(file)
-        with open('/home/matheus/Documents/gammapy-dev/gammapy/aux_files/comb_bin'+str(i)+'.pkl', 'rb') as file:
-            comb = pickle.load(file)
+        #with open('/home/matheus/Documents/gammapy-dev/gammapy/aux_files/comb_bin'+str(i)+'.pkl', 'rb') as file2:
+        #    comb = pickle.load(file2)
         soma = Decimal(0)
         # Loop in n_s (0 to n_on)
         if mu_sig[i][0][0] > 0:  # avoid 0**0 case
@@ -592,7 +596,9 @@ def basil_like_general_v3(n_on, n_off, alpha, var_Non, mu_sig, variable, bin_dis
             soma = float(soma.log10()) / np.log10(np.exp(1))
             res[i][0][0] = soma - mu_sig[i][0][0]
         elif mu_sig[i][0][0] == 0:
-            res[i][0][0] = float((Decimal(factorial(int(n_on[i][0][0]) + int(n_off[i][0][0]))//factorial(int(n_off[i][0][0])))*Decimal(comb[0])).log10()) / np.log10(np.exp(1))
+            res[i][0][0] = float(prod[0].log10()) / np.log10(np.exp(1))
+            #res[i][0][0] = float((Decimal(factorial(int(n_on[i][0][0]) + int(n_off[i][0][0]))//factorial(int(n_off[i][0][0])))*Decimal(comb[0])).log10()) / np.log10(np.exp(1))
+            #print(res[i][0][0])
         else:
             res[i][0][0] = -np.inf
     return -2 * res
@@ -647,7 +653,7 @@ def basil_like_general_v2(n_on, n_off, alpha, var_Non, mu_sig, variable, bin_dis
         elif mu_sig[i][0][0] == 0:
             res[i][0][0] = float((Decimal(factorial(int(n_on[i][0][0]) + int(n_off[i][0][0]))//factorial(int(n_off[i][0][0])))*Decimal(comb[0])).log10()) / np.log10(np.exp(1))
         else:
-            res[i][0][0] = -np.inf # this broke the estimation
+            res[i][0][0] = -np.inf
     return -2 * res
 
 def basil_like_general(n_on, n_off, alpha, var_Non, mu_sig, variable, bin_dist, folder):
