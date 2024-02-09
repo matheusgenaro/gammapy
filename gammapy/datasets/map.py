@@ -18,6 +18,7 @@ from gammapy.stats import (
     get_wstat_mu_bkg,
     wstat,
     BASiL_3D,
+    basil_sum_cython,
 )
 from gammapy.utils.fits import HDULocation, LazyFitsData
 from gammapy.utils.random import get_random_state
@@ -2920,6 +2921,13 @@ class MapDatasetBASiL(MapDataset):
         return BASiL_3D(n_on=self.counts.data, mu_s=self.npred_signal().data, mu_b=self.npred_background().data, comb=self.comb)
 
     def stat_sum(self):
+        # Original method has some prior conditions that may be adapted
+        counts, npred_s, npred_b = self.counts.data.astype(float), self.npred_signal().data, self.npred_background().data
+        comb = self.comb
+
+        return basil_sum_cython(counts.ravel(), npred_s.ravel(), npred_b.ravel(), comb)
+
+    def stat_sum_old(self):
         return np.sum(BASiL_3D(n_on=self.counts.data, mu_s=self.npred_signal().data, mu_b=self.npred_background().data,
                  comb=self.comb))
     #def stat_sum(self):

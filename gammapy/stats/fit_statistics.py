@@ -35,15 +35,15 @@ def BASiL_3D(n_on, mu_s, mu_b, comb, truncation_value=TRUNCATION_VALUE):
         for i in range(nbins_en):
             for j in range(nbins_lat):
                 for k in range(nbins_lon):
-                    if n_on[i,j,k] == 0:
+                    if int(n_on[i,j,k]) == 0:
                         log_term_ = Decimal(1)
                     else:
                         log_term_ = Decimal(0)
-                        for l in range(int(n_on[i,j,k])):
-                            log_term_ += comb[i][k][j][l]*Decimal(mu_s[i,j,k]**l)*Decimal(mu_b[i,j,k]**(n_on[i,j,k]-l))
+                        for l in range(int(n_on[i,j,k])+1):
+                            log_term_ += comb[i][k][j][l]*Decimal(mu_s[i,j,k]**l)*Decimal(mu_b[i,j,k]**(int(n_on[i,j,k])-l))
                    # Negative values?
                     if log_term_ <= truncation_value:
-                        log_term = truncation_value
+                        log_term = np.log(truncation_value)
                     else:
                         log_term = float(log_term_.log10()) / np.log10(np.exp(1))
                     stat[i,j,k] = 2 * (mu_on[i,j,k] - log_term)
