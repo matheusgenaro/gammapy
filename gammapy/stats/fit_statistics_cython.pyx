@@ -1,6 +1,7 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 # cython: language_level=3
 import numpy as np
+from decimal import *
 
 cimport numpy as np
 cimport cython
