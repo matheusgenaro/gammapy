@@ -6,7 +6,7 @@ from gammapy.utils.scripts import make_path
 from .map import MapDataset, MapDatasetOnOff
 from .utils import get_axes
 
-__all__ = ["SpectrumDatasetOnOff", "SpectrumDataset"]
+__all__ = ["SpectrumDatasetOnOff", "SpectrumDataset", "SpectrumDatasetOnOffBASiL"]
 
 log = logging.getLogger(__name__)
 
@@ -431,3 +431,183 @@ class SpectrumDatasetOnOff(PlotMixin, MapDatasetOnOff):
             SpectrumDataset with Cash statistic.
         """
         return self.to_map_dataset(name=name).to_spectrum_dataset(on_region=None)
+        
+class SpectrumDatasetOnOffBASiL(SpectrumDatasetOnOff):
+    """New dataset type that includes the Bayesian approach for
+    computing the posterior of the signal in On/Off analysis.
+    """
+    def __init__(
+            self,
+            models=None,
+            counts=None,
+            counts_off=None,
+            acceptance=None,
+            acceptance_off=None,
+            exposure=None,
+            mask_fit=None,
+            psf=None,
+            edisp=None,
+            name=None,
+            mask_safe=None,
+            gti=None,
+            meta_table=None,
+            variable=None,
+            var_Non=None,
+            bin_dist=None,
+            folder=None,
+    ):
+        self._name = make_name(name)
+        self._evaluators = {}
+
+        self.counts = counts
+        self.counts_off = counts_off
+        self.exposure = exposure
+        self.acceptance = acceptance
+        self.acceptance_off = acceptance_off
+        self.gti = gti
+        self.mask_fit = mask_fit
+        self.psf = psf
+        self.edisp = edisp
+        self.models = models
+        self.mask_safe = mask_safe
+        self.meta_table = meta_table
+        self.variable = variable
+        self.var_Non = var_Non
+        self.bin_dist = bin_dist
+        self.folder = folder
+
+    def stat_array(self):
+        """
+        Likelihood per bin in BASiL approach given the current model parameters
+        """
+        print("It is using BASiL.")
+        mu_sig = self.npred_signal().data
+        on_stat_ = basil_like_general_v3(
+            n_on=self.counts.data,
+            n_off=self.counts_off.data,
+            alpha=list(self.alpha.data),
+            var_Non=self.var_Non.data,
+            mu_sig=mu_sig,
+            variable=self.variable,
+            bin_dist=self.bin_dist,
+            folder=self.folder,
+            energy=self.counts.geom.axes["energy"].center.value,
+        )
+        return np.nan_to_num(on_stat_)
+
+    def slice_by_idx(self, slices, name=None):
+        """Slice sub dataset. Modification from the corresponding one in MapDatasetOnOff.
+
+        The slicing only applies to the maps that define the corresponding axes.
+
+        Parameters
+        ----------
+        slices : dict
+            Dictionary of axes names and integers or `slice` object pairs. Contains one
+            element for each non-spatial dimension. For integer indexing the
+            corresponding axes is dropped from the map. Axes not specified in the
+            dict are kept unchanged.
+        name : str, optional
+            Name of the sliced dataset. Default is None.
+
+        Returns
+        -------
+        dataset : `MapDataset` or `SpectrumDataset`
+            Sliced dataset.
+
+        Examples
+        --------
+        >>> from gammapy.datasets import MapDataset
+        >>> dataset = MapDataset.read("$GAMMAPY_DATA/cta-1dc-gc/cta-1dc-gc.fits.gz")
+        >>> slices = {"energy": slice(0, 3)} #to get the first 3 energy slices
+        >>> sliced = dataset.slice_by_idx(slices)
+        >>> print(sliced.geoms["geom"])
+        WcsGeom
+                axes       : ['lon', 'lat', 'energy']
+                shape      : (320, 240, 3)
+                ndim       : 3
+                frame      : galactic
+                projection : CAR
+                center     : 0.0 deg, 0.0 deg
+                width      : 8.0 deg x 6.0 deg
+                wcs ref    : 0.0 deg, 0.0 deg
+        """
+        name = make_name(name)
+        kwargs = {"gti": self.gti, "name": name, "meta_table": self.meta_table}
+
+        if self.counts is not None:
+            kwargs["counts"] = self.counts.slice_by_idx(slices=slices)
+
+        if self.counts_off is not None:
+            kwargs["counts_off"] = self.counts_off.slice_by_idx(slices=slices)
+
+        if self.acceptance is not None:
+            kwargs["acceptance"] = self.acceptance.slice_by_idx(slices=slices)
+
+        if self.acceptance_off is not None:
+            kwargs["acceptance_off"] = self.acceptance.slice_by_idx(slices=slices)
+
+        if self.exposure is not None:
+            kwargs["exposure"] = self.exposure.slice_by_idx(slices=slices)
+
+        if self.background is not None and self.stat_type == "cash":
+            kwargs["background"] = self.background.slice_by_idx(slices=slices)
+
+        if self.edisp is not None:
+            kwargs["edisp"] = self.edisp.slice_by_idx(slices=slices)
+
+        if self.psf is not None:
+            kwargs["psf"] = self.psf.slice_by_idx(slices=slices)
+
+        if self.mask_safe is not None:
+            kwargs["mask_safe"] = self.mask_safe.slice_by_idx(slices=slices)
+
+        if self.mask_fit is not None:
+            kwargs["mask_fit"] = self.mask_fit.slice_by_idx(slices=slices)
+
+        if self.variable is not None:
+            kwargs["variable"] = self.variable
+
+        if self.var_Non is not None:
+            kwargs["var_Non"] = self.var_Non
+
+        if self.bin_dist is not None:
+            kwargs["bin_dist"] = self.bin_dist
+
+        if self.folder is not None:
+            kwargs["folder"] = self.folder
+
+        return self.__class__(**kwargs)
+
+def basil_like_general_v3(n_on, mu_sig, folder, energy):
+    '''
+       Compute the log of the marginal likelihood (posterior of mu_sig)
+       Not yet fully implemented for multiple event variables.
+    '''
+
+    res = np.zeros(n_on.shape)
+
+    # Loop in energy bins
+    for i in range(len(n_on)):
+        with open('/home/matheus/Documents/gammapy-dev/gammapy/aux_files/MC/dataset3/3_bkg-norm500_new/prod_bin'+str(energy[i])+'.pkl', 'rb') as file:
+            prod = pickle.load(file)
+        #with open('/home/matheus/Documents/gammapy-dev/gammapy/aux_files/comb_bin'+str(i)+'.pkl', 'rb') as file2:
+        #    comb = pickle.load(file2)
+        soma = Decimal(0)
+        # Loop in n_s (0 to n_on)
+        if mu_sig[i][0][0] > 0:  # avoid 0**0 case
+            for j in range(int(n_on[i][0][0]) + 1):
+                soma += prod[j] * Decimal(mu_sig[i][0][0]) ** Decimal(j)
+            # log natural base
+            soma = float(soma.log10()) / np.log10(np.exp(1))
+            res[i][0][0] = soma - mu_sig[i][0][0]
+        elif mu_sig[i][0][0] == 0:
+            res[i][0][0] = float(prod[0].log10()) / np.log10(np.exp(1))
+            #res[i][0][0] = float((Decimal(factorial(int(n_on[i][0][0]) + int(n_off[i][0][0]))//factorial(int(n_off[i][0][0])))*Decimal(comb[0])).log10()) / np.log10(np.exp(1))
+            #print(res[i][0][0])
+        else:
+            res[i][0][0] = -np.inf
+    return -2 * res
+
+
+

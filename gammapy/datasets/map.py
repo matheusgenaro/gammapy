@@ -18,6 +18,8 @@ from gammapy.stats import (
     cash_sum_cython,
     get_wstat_mu_bkg,
     wstat,
+    BASiL_3D,
+    basil_sum_cython,
 )
 from gammapy.utils.fits import HDULocation, LazyFitsData
 from gammapy.utils.random import get_random_state
@@ -34,6 +36,7 @@ __all__ = [
     "create_empty_map_dataset_from_irfs",
     "create_map_dataset_geoms",
     "create_map_dataset_from_observation",
+    "MapDatasetBASiL",
 ]
 
 log = logging.getLogger(__name__)
@@ -3229,3 +3232,64 @@ class MapDatasetOnOff(MapDataset):
             counts_off=counts_off,
             name=name,
         )
+        
+class MapDatasetBASiL(MapDataset):
+    """
+    MapDataset class with BASiL statistics adapted for 3D analysis.
+    """
+    def __init__(
+        self,
+        models=None,
+        counts=None,
+        exposure=None,
+        background=None,
+        psf=None,
+        edisp=None,
+        mask_safe=None,
+        mask_fit=None,
+        gti=None,
+        meta_table=None,
+        name=None,
+    ):
+        self._name = make_name(name)
+        self._evaluators = {}
+
+        self.counts = counts
+        self.exposure = exposure
+        self.background = background
+        self._background_cached = None
+        self._background_parameters_cached = None
+
+        self.mask_fit = mask_fit
+
+        if psf and not isinstance(psf, (PSFMap, HDULocation)):
+            raise ValueError(
+                f"'psf' must be a 'PSFMap' or `HDULocation` object, got {type(psf)}"
+            )
+
+        self.psf = psf
+
+        if edisp and not isinstance(edisp, (EDispMap, EDispKernelMap, HDULocation)):
+            raise ValueError(
+                "'edisp' must be a 'EDispMap', `EDispKernelMap` or 'HDULocation' "
+                f"object, got `{type(edisp)}` instead."
+            )
+
+        self.edisp = edisp
+        self.mask_safe = mask_safe
+        self.gti = gti
+        self.models = models
+        self.meta_table = meta_table
+
+
+    def stat_array(self):
+        """Statistic function value per bin given the current model parameters."""
+        return BASiL_3D(n_on=self.counts.data, mu_s=self.npred_signal().data, mu_b=self.npred_background().data, comb=self.comb)
+
+    def stat_sum(self):
+        # Original method has some prior conditions that may be adapted
+        counts, npred_s, npred_b = self.counts.data.astype(float), self.npred_signal().data, self.npred_background().data
+        comb = self.comb
+
+        return basil_sum_cython(counts.ravel(), npred_s.ravel(), npred_b.ravel(), comb)
+        

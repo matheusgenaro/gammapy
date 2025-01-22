@@ -6,13 +6,14 @@ from .io import OGIPDatasetReader, OGIPDatasetWriter
 from .map import (
     MapDataset,
     MapDatasetOnOff,
+    MapDatasetBASiL,
     create_empty_map_dataset_from_irfs,
     create_map_dataset_from_observation,
     create_map_dataset_geoms,
 )
 from .metadata import MapDatasetMetaData
 from .simulate import MapDatasetEventSampler, ObservationEventSampler
-from .spectrum import SpectrumDataset, SpectrumDatasetOnOff
+from .spectrum import SpectrumDataset, SpectrumDatasetOnOff, SpectrumDatasetOnOffBASiL
 from .utils import apply_edisp, split_dataset
 
 DATASET_REGISTRY = Registry(
@@ -38,6 +39,7 @@ __all__ = [
     "MapDataset",
     "MapDatasetEventSampler",
     "MapDatasetOnOff",
+    "MapDatasetBASiL",
     "ObservationEventSampler",
     "OGIPDatasetWriter",
     "OGIPDatasetReader",
@@ -46,4 +48,6 @@ __all__ = [
     "MapDatasetMetaData",
     "apply_edisp",
     "split_dataset",
+    "SpectrumDatasetOnOff",
+    "SpectrumDatasetOnOffBASiL",
 ]

@@ -7,8 +7,46 @@ see :ref:`fit-statistics`
 import numpy as np
 from gammapy.stats.fit_statistics_cython import TRUNCATION_VALUE
 
-__all__ = ["cash", "cstat", "wstat", "get_wstat_mu_bkg", "get_wstat_gof_terms"]
+__all__ = ["cash", "cstat", "wstat", "get_wstat_mu_bkg", "get_wstat_gof_terms", "BASiL_3D"]
 
+def BASiL_3D(n_on, mu_s, mu_b, comb, truncation_value=TRUNCATION_VALUE):
+    r"""BASiL statistics for 3D case.
+    """
+    n_on = np.asanyarray(n_on)
+    mu_s = np.asanyarray(mu_s)
+    mu_b = np.asanyarray(mu_b)
+
+    mu_on = mu_s + mu_b
+
+    nbins_lon = n_on.shape[-1]
+    nbins_lat = n_on.shape[-2]
+    nbins_en = n_on.shape[-3]
+
+    truncation_value = np.asanyarray(truncation_value)
+    if np.any(truncation_value) <= 0:
+        raise ValueError("Cash statistic truncation value must be positive.")
+
+    mu_on = np.where(mu_on <= truncation_value, truncation_value, mu_on)
+
+    stat = np.zeros((nbins_en,nbins_lat,nbins_lon))
+    # suppress zero division warnings, they are corrected below
+    with np.errstate(divide="ignore", invalid="ignore"):
+        for i in range(nbins_en):
+            for j in range(nbins_lat):
+                for k in range(nbins_lon):
+                    if int(n_on[i,j,k]) == 0:
+                        log_term_ = Decimal(1)
+                    else:
+                        log_term_ = Decimal(0)
+                        for l in range(int(n_on[i,j,k])+1):
+                            log_term_ += comb[i][k][j][l]*Decimal(mu_s[i,j,k]**l)*Decimal(mu_b[i,j,k]**(int(n_on[i,j,k])-l))
+                   # Negative values?
+                    if log_term_ <= truncation_value:
+                        log_term = np.log(truncation_value)
+                    else:
+                        log_term = float(log_term_.log10()) / np.log10(np.exp(1))
+                    stat[i,j,k] = 2 * (mu_on[i,j,k] - log_term)
+    return stat
 
 def cash(n_on, mu_on, truncation_value=TRUNCATION_VALUE):
     r"""Cash statistic, for Poisson data.
