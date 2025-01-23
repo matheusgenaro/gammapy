@@ -5,6 +5,7 @@ from matplotlib.gridspec import GridSpec
 from gammapy.utils.scripts import make_path
 from .map import MapDataset, MapDatasetOnOff
 from .utils import get_axes
+from gammapy.utils.scripts import make_name
 
 __all__ = ["SpectrumDatasetOnOff", "SpectrumDataset", "SpectrumDatasetOnOffBASiL"]
 
