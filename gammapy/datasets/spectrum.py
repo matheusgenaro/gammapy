@@ -6,6 +6,9 @@ from gammapy.utils.scripts import make_path
 from .map import MapDataset, MapDatasetOnOff
 from .utils import get_axes
 from gammapy.utils.scripts import make_name
+import numpy as np
+import pickle
+from decimal import *
 
 __all__ = ["SpectrumDatasetOnOff", "SpectrumDataset", "SpectrumDatasetOnOffBASiL"]
 
@@ -485,12 +488,7 @@ class SpectrumDatasetOnOffBASiL(SpectrumDatasetOnOff):
         mu_sig = self.npred_signal().data
         on_stat_ = basil_like_general_v3(
             n_on=self.counts.data,
-            n_off=self.counts_off.data,
-            alpha=list(self.alpha.data),
-            var_Non=self.var_Non.data,
             mu_sig=mu_sig,
-            variable=self.variable,
-            bin_dist=self.bin_dist,
             folder=self.folder,
             energy=self.counts.geom.axes["energy"].center.value,
         )
@@ -590,10 +588,8 @@ def basil_like_general_v3(n_on, mu_sig, folder, energy):
 
     # Loop in energy bins
     for i in range(len(n_on)):
-        with open('/home/matheus/Documents/gammapy-dev/gammapy/aux_files/MC/dataset3/3_bkg-norm500_new/prod_bin'+str(energy[i])+'.pkl', 'rb') as file:
+        with open('/home/matheus/Documents/BASiL/dist/factors/'+folder+'/prod_bin'+str(energy[i])+'.pkl', 'rb') as file:
             prod = pickle.load(file)
-        #with open('/home/matheus/Documents/gammapy-dev/gammapy/aux_files/comb_bin'+str(i)+'.pkl', 'rb') as file2:
-        #    comb = pickle.load(file2)
         soma = Decimal(0)
         # Loop in n_s (0 to n_on)
         if mu_sig[i][0][0] > 0:  # avoid 0**0 case
@@ -604,8 +600,6 @@ def basil_like_general_v3(n_on, mu_sig, folder, energy):
             res[i][0][0] = soma - mu_sig[i][0][0]
         elif mu_sig[i][0][0] == 0:
             res[i][0][0] = float(prod[0].log10()) / np.log10(np.exp(1))
-            #res[i][0][0] = float((Decimal(factorial(int(n_on[i][0][0]) + int(n_off[i][0][0]))//factorial(int(n_off[i][0][0])))*Decimal(comb[0])).log10()) / np.log10(np.exp(1))
-            #print(res[i][0][0])
         else:
             res[i][0][0] = -np.inf
     return -2 * res
