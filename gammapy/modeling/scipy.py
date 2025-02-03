@@ -58,15 +58,21 @@ class TSDifference:
             self.parameter.frozen = True
             optimize_scipy(self.parameters, self.function, method="L-BFGS-B")
         value = self.function() - self.stat_null - self.ts_diff
+
         return value
 
 
 def _confidence_scipy_brentq(
     parameters, parameter, function, sigma, reoptimize, upper=True, **kwargs
 ):
-
+    basil_confidence = kwargs.pop("basil_confidence", None)
+    if basil_confidence == None:
+        ts_diff_value = sigma**2
+    else:y
+        ts_diff_value = basil_confidence
+        
     ts_diff = TSDifference(
-        function, parameters, parameter, reoptimize, ts_diff=sigma**2
+        function, parameters, parameter, reoptimize, ts_diff=ts_diff_value
     )
 
     lower_bound = parameter.factor

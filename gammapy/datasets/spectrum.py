@@ -486,6 +486,7 @@ class SpectrumDatasetOnOffBASiL(SpectrumDatasetOnOff):
         """
         print("It is using BASiL.")
         mu_sig = self.npred_signal().data
+        print()
         on_stat_ = basil_like_general_v3(
             n_on=self.counts.data,
             mu_sig=mu_sig,

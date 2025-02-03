@@ -326,7 +326,7 @@ class ParameterEstimator(Estimator):
         if not isinstance(datasets, DatasetsActor):
             datasets = Datasets(datasets)
         parameter = datasets.parameters[parameter]
-
+        
         with datasets.parameters.restore_status():
 
             if not self.reoptimize:

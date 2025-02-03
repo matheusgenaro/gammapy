@@ -164,3 +164,4 @@ class FluxEstimator(ParameterEstimator):
         datasets.models[self.source].spectral_model.norm.value = result["norm"]
         result.update(self.estimate_npred_excess(datasets=datasets))
         return result
+        

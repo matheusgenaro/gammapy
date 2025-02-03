@@ -329,9 +329,15 @@ class Fit:
         """
         datasets, parameters = _parse_datasets(datasets=datasets)
 
+        # Check for which energy bin the confidence interval is being computed 
+        en_bin = datasets[0].geoms['geom'].axes['energy'].center[0].value
+        
         kwargs = self.confidence_opts.copy()
         backend = kwargs.pop("backend", self.backend)
-
+        basil_confidence = kwargs.pop("basil_confidence", None)
+        if basil_confidence is not None:
+            kwargs["basil_confidence"] = basil_confidence["{:.4f}".format(en_bin)]
+        
         compute = registry.get("confidence", backend)
         parameter = parameters[parameter]
 

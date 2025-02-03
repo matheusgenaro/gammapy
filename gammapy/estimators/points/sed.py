@@ -89,14 +89,16 @@ class FluxPointsEstimator(FluxEstimator, parallel.ParallelMixin):
         sum_over_energy_groups=False,
         n_jobs=None,
         parallel_backend=None,
+        basil_confidence=None,
         **kwargs,
     ):
         self.energy_edges = energy_edges
         self.sum_over_energy_groups = sum_over_energy_groups
         self.n_jobs = n_jobs
         self.parallel_backend = parallel_backend
-
-        fit = Fit(confidence_opts={"backend": "scipy"})
+        self.basil_confidence = basil_confidence
+        
+        fit = Fit(confidence_opts={"backend": "scipy", "basil_confidence":self.basil_confidence})
         kwargs.setdefault("fit", fit)
         super().__init__(**kwargs)
 
