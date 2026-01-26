@@ -55,7 +55,7 @@ def basil_sum_cython(np.ndarray[np.float_t, ndim=1] counts,
             else:
                 for j in range(int(counts[i])+1):
                     logterm += Decimal(comb[i+k+j])*(Decimal(npred_s[i])**Decimal(j))*(Decimal(npred_b[i])**Decimal(int(counts[i])-j))
-                k += int(counts[i])
+            k += int(counts[i])
             if logterm < trunc:
                 logterm = logtrunc
             else:

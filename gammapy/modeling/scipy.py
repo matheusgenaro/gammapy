@@ -68,7 +68,7 @@ def _confidence_scipy_brentq(
     basil_confidence = kwargs.pop("basil_confidence", None)
     if basil_confidence == None:
         ts_diff_value = sigma**2
-    else:y
+    else:
         ts_diff_value = basil_confidence
         
     ts_diff = TSDifference(

@@ -29,6 +29,7 @@ from .core import Dataset
 from .evaluator import MapEvaluator
 from .metadata import MapDatasetMetaData
 from .utils import get_axes
+import copy # for BASiL slice_by_idx
 
 __all__ = [
     "MapDataset",
@@ -3250,6 +3251,7 @@ class MapDatasetBASiL(MapDataset):
         gti=None,
         meta_table=None,
         name=None,
+        comb_flat=None,
     ):
         self._name = make_name(name)
         self._evaluators = {}
@@ -3259,7 +3261,7 @@ class MapDatasetBASiL(MapDataset):
         self.background = background
         self._background_cached = None
         self._background_parameters_cached = None
-
+        self.comb_flat = comb_flat
         self.mask_fit = mask_fit
 
         if psf and not isinstance(psf, (PSFMap, HDULocation)):
@@ -3284,12 +3286,172 @@ class MapDatasetBASiL(MapDataset):
 
     def stat_array(self):
         """Statistic function value per bin given the current model parameters."""
+        print('It is using BASiL')
         return BASiL_3D(n_on=self.counts.data, mu_s=self.npred_signal().data, mu_b=self.npred_background().data, comb=self.comb)
 
     def stat_sum(self):
         # Original method has some prior conditions that may be adapted
-        counts, npred_s, npred_b = self.counts.data.astype(float), self.npred_signal().data, self.npred_background().data
-        comb = self.comb
+        prior_stat_sum = 0.0
+        if self.models is not None:
+            prior_stat_sum = self.models.parameters.prior_stat_sum()
+            
+  
+        counts, npred_s, npred_b = self.counts.data.astype(float), self.npred_signal().data.astype(float), self.npred_background().data.astype(float)
+        comb_f = self.comb_flat
 
-        return basil_sum_cython(counts.ravel(), npred_s.ravel(), npred_b.ravel(), comb)
+        if self.mask is not None:
+            mask = ~(self.mask.data == False)  # noqa
+            counts = counts[mask]
+            npred_s = npred_s[mask]
+            npred_b = npred_b[mask]            
+            if self.mask.data.dtype == bool or self.stat_type == "basil":
+                basil_sum = basil_sum_cython(counts, npred_s, npred_b, comb_f)
+            elif self.stat_type == "cash_weighted":
+                weight = self.mask.data[mask]
+                cash_sum = weighted_cash_sum_cython(counts, npred, weight)
+            else:
+                raise ValueError(
+                    f"'stat_type' must be a 'basil' or `cash_weighted`."
+                    f", got `{self.stat_type}` instead."
+                )
+        else:
+             basil_sum = basil_sum_cython(counts.ravel(), npred_s.ravel(), npred_b.ravel(), comb_f)
+             print('It is using BASiL')
+        return basil_sum
+          
+    def slice_by_idx(self, slices, name=None):
+        """Slice sub dataset.
+
+        The slicing only applies to the maps that define the corresponding axes.
+        Modification so that it is compatible to stat_type == 'basil'
         
+        Parameters
+        ----------
+        slices : dict
+            Dictionary of axes names and integers or `slice` object pairs. Contains one
+            element for each non-spatial dimension. For integer indexing the
+            corresponding axes is dropped from the map. Axes not specified in the
+            dict are kept unchanged.
+        name : str, optional
+            Name of the sliced dataset. Default is None.
+
+        Returns
+        -------
+        dataset : `MapDataset` or `SpectrumDataset`
+            Sliced dataset.
+
+        Examples
+        --------
+        >>> from gammapy.datasets import MapDataset
+        >>> dataset = MapDataset.read("$GAMMAPY_DATA/cta-1dc-gc/cta-1dc-gc.fits.gz")
+        >>> slices = {"energy": slice(0, 3)} #to get the first 3 energy slices
+        >>> sliced = dataset.slice_by_idx(slices)
+        >>> print(sliced.geoms["geom"])
+        WcsGeom
+        <BLANKLINE>
+            axes       : ['lon', 'lat', 'energy']
+            shape      : (np.int64(320), np.int64(240), 3)
+            ndim       : 3
+            frame      : galactic
+            projection : CAR
+            center     : 0.0 deg, 0.0 deg
+            width      : 8.0 deg x 6.0 deg
+            wcs ref    : 0.0 deg, 0.0 deg
+        <BLANKLINE>
+        """
+        name = make_name(name)
+        kwargs = {"gti": self.gti, "name": name, "meta_table": self.meta_table}
+
+        if self.counts is not None:
+            kwargs["counts"] = self.counts.slice_by_idx(slices=slices)
+
+        if self.exposure is not None:
+            kwargs["exposure"] = self.exposure.slice_by_idx(slices=slices)
+
+        if self.background is not None and self.stat_type == "basil":
+            kwargs["background"] = self.background.slice_by_idx(slices=slices)
+
+        if self.edisp is not None:
+            kwargs["edisp"] = self.edisp.slice_by_idx(slices=slices)
+
+        if self.psf is not None:
+            kwargs["psf"] = self.psf.slice_by_idx(slices=slices)
+
+        if self.mask_safe is not None:
+            kwargs["mask_safe"] = self.mask_safe.slice_by_idx(slices=slices)
+
+        if self.mask_fit is not None:
+            kwargs["mask_fit"] = self.mask_fit.slice_by_idx(slices=slices)
+            
+        if self.comb is not None:
+            kwargs["comb_flat"] = slice_mask_flat_comb_new(self.comb, self.mask, slices)
+            #kwargs["comb_flat"] = flat_comb_sliced(self.new_comb_masked, slices['energy'].start)
+
+        return self.__class__(**kwargs)     
+        
+def flat_comb_sliced(new_comb_masked, idx):
+    flat_comb_masked = []
+    for j in range(len(new_comb_masked[idx])):
+        for k in range(len(new_comb_masked[idx][j])):
+            if np.isscalar(new_comb_masked[idx][j][k]):
+                flat_comb_masked.append(float(new_comb_masked[idx][j][k]))
+            else:
+                for l in range(len(new_comb_masked[idx][j][k])):
+                    flat_comb_masked.append(float(new_comb_masked[idx][j][k][l]))
+    return np.asanyarray(flat_comb_masked)
+    
+def slice_mask_flat_comb_new(new_comb, mask, slices):
+    '''
+       Mask and slice the comb list for BASiL.
+    '''
+    idx = slices['energy'].start
+    new_comb_copy = copy.deepcopy(new_comb[idx])
+    mask_sliced = mask.slice_by_idx(slices=slices)
+    comb_sliced_list = []
+    for i in range(len(mask_sliced.data[0])):
+        for j in range(len(mask_sliced.data[0][0])):
+            if mask_sliced.data[0][i][j] == True:
+                if np.isscalar(new_comb_copy[i][j]):
+                    comb_sliced_list.append(float(new_comb_copy[i][j]))
+                else:
+                    for k in range(len(new_comb_copy[i][j])):
+                        comb_sliced_list.append(float(new_comb_copy[i][j][k]))
+
+    return np.asanyarray(comb_sliced_list)
+    
+def slice_mask_flat_comb(new_comb, mask, slices):
+    '''
+       mask: dataset mask
+    '''
+    idx = slices['energy'].start
+    # Slice comb
+    new_comb_copy = copy.deepcopy(new_comb[idx])
+    mask_sliced = mask.slice_by_idx(slices=slices)
+    indx_mask = np.argwhere(mask_sliced.data == False)
+    # Prepare masked comb
+    for i in range(len(indx_mask)):
+        indx_ = indx_mask[i]
+        new_comb_copy[indx_[0]][indx_[1]] = -1
+    # Create masked comb
+    new_comb_masked = []
+    for j in range(len(new_comb_copy)):
+        row = []
+        for k in range(len(new_comb_copy[j])):
+            if new_comb_copy[j][k] != -1:
+                row.append(new_comb_copy[j][k])
+        if len(row) > 0:
+            new_comb_masked.append(row)
+    # Output is [] or [[row1],[row2],...]
+    # Flattening masked comb
+    flat_comb_masked = []
+    if len(new_comb_masked) > 0:
+        for j in range(len(new_comb_masked)):
+            for k in range(len(new_comb_masked[j])):
+                if np.isscalar(new_comb_masked[j][k]):
+                    flat_comb_masked.append(float(new_comb_masked[j][k]))
+                else:
+                    for l in range(len(new_comb_masked[j][k])):
+                        flat_comb_masked.append(float(new_comb_masked[j][k][l]))
+                        
+    return np.asanyarray(flat_comb_masked)
+                    

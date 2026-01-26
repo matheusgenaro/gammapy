@@ -6,6 +6,7 @@ see :ref:`fit-statistics`
 
 import numpy as np
 from gammapy.stats.fit_statistics_cython import TRUNCATION_VALUE
+from decimal import *
 
 __all__ = ["cash", "cstat", "wstat", "get_wstat_mu_bkg", "get_wstat_gof_terms", "BASiL_3D"]
 
@@ -38,8 +39,13 @@ def BASiL_3D(n_on, mu_s, mu_b, comb, truncation_value=TRUNCATION_VALUE):
                         log_term_ = Decimal(1)
                     else:
                         log_term_ = Decimal(0)
-                        for l in range(int(n_on[i,j,k])+1):
-                            log_term_ += comb[i][k][j][l]*Decimal(mu_s[i,j,k]**l)*Decimal(mu_b[i,j,k]**(int(n_on[i,j,k])-l))
+                        if (mu_s[i,j,k].item() == 0) & (mu_b[i,j,k].item() > 0):
+                            log_term_ += comb[i][j][k][0]*Decimal(mu_b[i,j,k].item()**(int(n_on[i,j,k])))
+                        elif (mu_s[i,j,k].item() > 0) & (mu_b[i,j,k].item() == 0):
+                            log_term_ += comb[i][j][k][-1]*Decimal(mu_s[i,j,k].item()**(int(n_on[i,j,k])))
+                        else:
+                            for l in range(int(n_on[i,j,k])+1):
+                                log_term_ += comb[i][j][k][l]*Decimal(mu_s[i,j,k].item()**l)*Decimal(mu_b[i,j,k].item()**(int(n_on[i,j,k])-l))
                    # Negative values?
                     if log_term_ <= truncation_value:
                         log_term = np.log(truncation_value)

@@ -189,7 +189,7 @@ class FluxPointsEstimator(FluxEstimator, parallel.ParallelMixin):
                     sum_over_energy_groups=self.sum_over_energy_groups,
                 )
                 datasets_sliced.models = models_sliced
-
+            
             return super().run(datasets=datasets_sliced)
         else:
             log.warning(f"No dataset contribute in range {energy_min}-{energy_max}")
