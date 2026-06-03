@@ -9,6 +9,7 @@ from gammapy.utils.scripts import make_name
 import numpy as np
 import pickle
 from decimal import *
+import math 
 
 __all__ = ["SpectrumDatasetOnOff", "SpectrumDataset", "SpectrumDatasetOnOffBASiL"]
 
@@ -459,6 +460,7 @@ class SpectrumDatasetOnOffBASiL(SpectrumDatasetOnOff):
             var_Non=None,
             bin_dist=None,
             folder=None,
+            dict_logprod=None
     ):
         self._name = make_name(name)
         self._evaluators = {}
@@ -479,8 +481,9 @@ class SpectrumDatasetOnOffBASiL(SpectrumDatasetOnOff):
         self.var_Non = var_Non
         self.bin_dist = bin_dist
         self.folder = folder
+        self.dict_logprod = dict_logprod
 
-    def stat_array(self):
+    def stat_array_old(self):
         """
         Likelihood per bin in BASiL approach given the current model parameters
         """
@@ -492,6 +495,21 @@ class SpectrumDatasetOnOffBASiL(SpectrumDatasetOnOff):
             mu_sig=mu_sig,
             folder=self.folder,
             energy=self.counts.geom.axes["energy"].center.value,
+        )
+        return np.nan_to_num(on_stat_)
+        
+    def stat_array(self):
+        """
+        Likelihood per bin in BASiL approach given the current model parameters
+        """
+        print("It is using BASiL.")
+        mu_sig = self.npred_signal().data
+        print()
+        on_stat_ = basil_like_general_v5(
+            n_on=self.counts.data,
+            mu_sig=mu_sig,
+            energy=self.counts.geom.axes["energy"].center.value,
+            dict_logprod=self.dict_logprod,
         )
         return np.nan_to_num(on_stat_)
 
@@ -576,6 +594,9 @@ class SpectrumDatasetOnOffBASiL(SpectrumDatasetOnOff):
 
         if self.folder is not None:
             kwargs["folder"] = self.folder
+            
+        if self.dict_logprod is not None:
+            kwargs["dict_logprod"] = self.dict_logprod
 
         return self.__class__(**kwargs)
 
@@ -606,4 +627,64 @@ def basil_like_general_v3(n_on, mu_sig, folder, energy):
     return -2 * res
 
 
+def basil_like_general_v4(n_on, mu_sig, folder, energy):
+    '''
+       Compute the log of the marginal likelihood (posterior of mu_sig)
+       Not yet fully implemented for multiple event variables.
+    '''
 
+    res = np.zeros(n_on.shape)
+
+    # Loop in energy bins
+    for i in range(len(n_on)):
+        with open('/home/matheus/Documents/BASiL/dist/factors/'+folder+'/prod_bin'+str(energy[i])+'.pkl', 'rb') as file:
+            logprod = pickle.load(file)
+        # Loop in n_s (0 to n_on)
+        mu_s = mu_sig[i][0][0]
+        if mu_s > 0:  # avoid 0**0 case
+            res[i][0][0] = log_sum_P_sN_mod(logprod + np.linspace(0,len(logprod)-1, len(logprod))*math.log(mu_s)) - mu_s
+            #res[i][0][0] = log_sum_P_sN(logprod, mu_sig[i][0][0])
+        elif mu_s == 0:
+            res[i][0][0] = logprod[0]
+        else:
+            res[i][0][0] = -np.inf
+    return -2 * res
+    
+def basil_like_general_v5(n_on, mu_sig, energy, dict_logprod):
+    '''
+       Compute the log of the marginal likelihood (posterior of mu_sig)
+       Not yet fully implemented for multiple event variables.
+    '''
+
+    res = np.zeros(n_on.shape)
+
+    # Loop in energy bins
+    for i in range(len(n_on)):
+        logprod = dict_logprod[str(energy[i])]
+        # Loop in n_s (0 to n_on)
+        mu_s = mu_sig[i][0][0]
+        if mu_s > 0:  # avoid 0**0 case
+            res[i][0][0] = log_sum_P_sN_mod(logprod + np.linspace(0,len(logprod)-1, len(logprod))*math.log(mu_s)) - mu_s
+        elif mu_s == 0:
+            res[i][0][0] = logprod[0]
+        else:
+            res[i][0][0] = -np.inf
+    return -2 * res
+
+
+def log_sum_P_sN_mod(xs):
+    m = max(xs)
+    return m + math.log(sum(math.exp(x - m) for x in xs))
+
+
+def log_sum_P_sN(logP, s):
+
+    log_s = math.log(s) 
+
+    xs = []
+    for N, p in enumerate(logP):
+        xs.append(p + N * log_s)
+
+    m = max(xs)
+
+    return m + math.log(sum(math.exp(x - m) for x in xs))

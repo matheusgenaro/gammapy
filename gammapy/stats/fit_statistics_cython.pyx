@@ -3,12 +3,13 @@
 import numpy as np
 from decimal import *
 
+from libc.math cimport exp, log
 cimport numpy as np
 cimport cython
 
 
-cdef extern from "math.h":
-    float log(float x)
+#cdef extern from "math.h":
+#    float log(float x)
 
 global TRUNCATION_VALUE
 TRUNCATION_VALUE = 1e-25
@@ -61,6 +62,136 @@ def basil_sum_cython(np.ndarray[np.float_t, ndim=1] counts,
             else:
                 logterm = float(logterm.log10()) / np.log10(np.exp(1))
         sum += (npr - logterm)
+
+    return 2 * sum
+
+from libc.math cimport exp, log
+cimport cython
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef double log_sum_exp(double[:] xs) nogil:
+    """
+    Numerically stable log-sum-exp.
+    """
+
+    cdef:
+        Py_ssize_t i, n
+        double m
+        double s
+
+    n = xs.shape[0]
+
+    if n == 0:
+        return -1e300   # or -INFINITY
+
+    m = xs[0]
+    for i in range(1, n):
+        if xs[i] > m:
+            m = xs[i]
+
+    s = 0.0
+    for i in range(n):
+        s += exp(xs[i] - m)
+
+    return m + log(s)
+
+
+cdef double stable_logsum_binomial(
+    int N,
+    double logs,
+    double logb,
+    double[:] logcomb,
+    int offset
+) nogil:
+
+    cdef:
+        int j
+        double val
+        double m
+        double s
+
+    #
+    # First pass: find max
+    #
+    m = (
+        logcomb[offset]
+        + N * logb
+    )
+
+    for j in range(1, N + 1):
+
+        val = (
+            logcomb[offset + j]
+            + j * logs
+            + (N - j) * logb
+        )
+
+        if val > m:
+            m = val
+
+    #
+    # Second pass: exp sum
+    #
+    s = 0.0
+
+    for j in range(N + 1):
+
+        val = (
+            logcomb[offset + j]
+            + j * logs
+            + (N - j) * logb
+        )
+
+        s += exp(val - m)
+
+    return m + log(s)
+
+@cython.cdivision(True)
+@cython.boundscheck(False)
+def basil_logsum_cython(long[:] counts,
+                    double[:] npred_s,
+                    double[:] npred_b,
+                    double[:] logcomb):
+    """Summed BASiL 3D fit statistics.
+
+    Parameters
+    ----------
+    counts : `~numpy.ndarray`
+        Counts array.
+    npred_s : `~numpy.ndarray`
+        Predicted counts array.
+    npred_b : `~numpy.ndarray`
+        Predicted background counts array.
+    comb : `~numpy.ndarray`
+        Combinatory factor array.
+    """
+    cdef np.float_t sum = 0
+    cdef np.float_t npr, s, b
+    cdef unsigned int i, ni, k, j, N
+    cdef np.float_t trunc = TRUNCATION_VALUE
+    cdef np.float_t logtrunc = log(TRUNCATION_VALUE)
+
+    ni = counts.shape[0]
+    k = 0
+    for i in range(ni):
+        npr = npred_s[i] + npred_b[i]
+        N = int(counts[i])
+        if npr < trunc:
+            npr = trunc
+        if N == 0:
+            sum += npr
+        else:
+            s = max(npred_s[i], trunc)
+            b = max(npred_b[i], trunc)
+            if (s == 0) and (b != 0):
+                sum += npr - (logcomb[i+k] + N*log(b))
+            elif (s != 0) and (b == 0):
+                sum += npr - (logcomb[i+k+N] + N*log(s))
+            else:
+                sum += npr - stable_logsum_binomial(N, log(s), log(b), logcomb, i+k)
+                
+            k += N
 
     return 2 * sum
 

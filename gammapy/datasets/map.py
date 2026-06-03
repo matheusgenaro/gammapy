@@ -18,8 +18,8 @@ from gammapy.stats import (
     cash_sum_cython,
     get_wstat_mu_bkg,
     wstat,
-    BASiL_3D,
-    basil_sum_cython,
+    BASiL_3D_logsum,
+    basil_logsum_cython,
 )
 from gammapy.utils.fits import HDULocation, LazyFitsData
 from gammapy.utils.random import get_random_state
@@ -3287,7 +3287,7 @@ class MapDatasetBASiL(MapDataset):
     def stat_array(self):
         """Statistic function value per bin given the current model parameters."""
         print('It is using BASiL')
-        return BASiL_3D(n_on=self.counts.data, mu_s=self.npred_signal().data, mu_b=self.npred_background().data, comb=self.comb)
+        return BASiL_3D_logsum(n_on=self.counts.data, mu_s=self.npred_signal().data, mu_b=self.npred_background().data, logcomb=self.comb)
 
     def stat_sum(self):
         # Original method has some prior conditions that may be adapted
@@ -3297,15 +3297,20 @@ class MapDatasetBASiL(MapDataset):
             
   
         counts, npred_s, npred_b = self.counts.data.astype(float), self.npred_signal().data.astype(float), self.npred_background().data.astype(float)
+        
         comb_f = self.comb_flat
-
+        comb_f = np.ascontiguousarray(comb_f, dtype=np.float64)
+        
         if self.mask is not None:
             mask = ~(self.mask.data == False)  # noqa
             counts = counts[mask]
             npred_s = npred_s[mask]
             npred_b = npred_b[mask]            
             if self.mask.data.dtype == bool or self.stat_type == "basil":
-                basil_sum = basil_sum_cython(counts, npred_s, npred_b, comb_f)
+                npred_s = np.ascontiguousarray(npred_s, dtype=np.float64)
+                npred_b = np.ascontiguousarray(npred_b, dtype=np.float64)
+                counts = np.ascontiguousarray(counts, dtype=np.long)
+                basil_sum = basil_logsum_cython(counts, npred_s, npred_b, comb_f)
             elif self.stat_type == "cash_weighted":
                 weight = self.mask.data[mask]
                 cash_sum = weighted_cash_sum_cython(counts, npred, weight)
@@ -3315,7 +3320,7 @@ class MapDatasetBASiL(MapDataset):
                     f", got `{self.stat_type}` instead."
                 )
         else:
-             basil_sum = basil_sum_cython(counts.ravel(), npred_s.ravel(), npred_b.ravel(), comb_f)
+             basil_sum = basil_logsum_cython(counts.ravel(), npred_s.ravel(), npred_b.ravel(), comb_f)
              print('It is using BASiL')
         return basil_sum
           
